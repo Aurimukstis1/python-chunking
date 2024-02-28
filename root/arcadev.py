@@ -15,7 +15,7 @@ SCREEN_SIZE = (WIDTH, HEIGHT)
 world_chunk_size_x = 128
 world_chunk_size_y = 128
 CHUNK_SIZE = 8
-TILE_SIZE = 1
+TILE_SIZE = 4
 CHUNK_FULLSIZE = CHUNK_SIZE*TILE_SIZE
 _range = 4
 
@@ -41,25 +41,24 @@ def perlin_worker(input_queue, output_queue, noise1, noise2, noise3, noise4):
 
 
 class Tile(arcade.SpriteSolidColor):
-    def __init__(self, screenx, screeny, data):
+    def __init__(self, input_screenx, input_screeny, data):
         self.data = int(data)
         super().__init__(TILE_SIZE, TILE_SIZE, (self.data, self.data, self.data))
-        self.center_x = screenx
-        self.center_y = screeny
-        #print("self.x="+str(screenx)+"|self.y="+str(screeny)+"|data="+str(self.data))
+        self.center_x = input_screenx+(int(TILE_SIZE/2))
+        self.center_y = input_screeny+(int(TILE_SIZE/2))
 
 
 class Chunk():
-    def __init__(self, chunkx, chunky, data, spritelist):
-        self.chunkx = chunkx
-        self.chunky = chunky
+    def __init__(self, input_chunkx, input_chunky, input_data, spritelist):
+        self.chunkx = input_chunkx
+        self.chunky = input_chunky
         self.tiles = []
 
         for localx in range(CHUNK_SIZE):
-            screenx = (localx+CHUNK_SIZE*chunkx)*TILE_SIZE
+            screenx = (localx+CHUNK_SIZE*input_chunkx)*TILE_SIZE
             for localy in range(CHUNK_SIZE):
-                screeny = (localy+CHUNK_SIZE*chunky)*TILE_SIZE
-                tile = Tile(screenx, screeny, data[localx][localy])
+                screeny = (localy+CHUNK_SIZE*input_chunky)*TILE_SIZE
+                tile = Tile(screenx, screeny, input_data[localx][localy])
                 self.tiles.append(tile)
                 spritelist.append(tile)
     
@@ -72,7 +71,7 @@ class World:
         self.width = width
         self.height = height
         self.chunks = []
-        self.chunk_list = set(())
+        self.chunk_generated_coordinate_list = set(())
         self.grid_sprite_list = grid_sprite_list
 
         self.task_queue = mp.Queue()
@@ -83,7 +82,7 @@ class World:
         # perlin generator settings
         self.seed = random.randint(0, 1000000)
         print("seed"+str(self.seed))
-        self.noise1 = PerlinNoise(octaves=1, seed=self.seed)
+        self.noise1 = PerlinNoise(octaves=2, seed=self.seed)
         self.noise2 = PerlinNoise(octaves=8, seed=self.seed)
         self.noise3 = PerlinNoise(octaves=32, seed=self.seed)
         self.noise4 = PerlinNoise(octaves=128, seed=self.seed)
@@ -93,8 +92,6 @@ class World:
             mp.Process(target=perlin_worker, args=(self.task_queue, self.done_queue, self.noise1, self.noise2, self.noise3, self.noise4)).start()
 
     def request_chunks(self, chunk_coord_list):
-        # Request a list of chunks, given their x and y chunk coordinate.
-        # Format should be similar to: chunk_list = [[1,2], [1,0], [-1, 4]]
         for coords in chunk_coord_list:
             print(f"Requested chunk: {coords}")
             self.task_queue.put(coords)
@@ -132,13 +129,13 @@ class Game(arcade.Window):
     def on_update(self, dt):
         self.world.get_chunks()
 
-        stuff_to_gen = []
+        stuff_to_gen = set(())
     
         for chunkx in range(self.mouse_chunk_x-_range, self.mouse_chunk_x+_range):
             for chunky in range(self.mouse_chunk_y-_range, self.mouse_chunk_y+_range):
-                if (chunkx,chunky) not in self.world.chunk_list:
-                    stuff_to_gen.append((chunkx, chunky))
-                    self.world.chunk_list.add((chunkx,chunky))
+                if (chunkx,chunky) not in self.world.chunk_generated_coordinate_list:
+                    stuff_to_gen.add((chunkx, chunky))
+                    self.world.chunk_generated_coordinate_list.add((chunkx,chunky))
 
         self.world.request_chunks(stuff_to_gen)
         if stuff_to_gen:
@@ -158,6 +155,7 @@ class Game(arcade.Window):
         arcade.draw_text(f"fps: {int(arcade.get_fps(10))}", self.mouse_x+10, self.mouse_y-30, arcade.color.GREEN, 12, 100, "left", "calibri")
         arcade.draw_text(f"chunk_x: {self.mouse_chunk_x}", self.mouse_x+10, self.mouse_y-45, arcade.color.GREEN, 12, 100, "left", "calibri")
         arcade.draw_text(f"chunk_y: {self.mouse_chunk_y}", self.mouse_x+10, self.mouse_y-60, arcade.color.GREEN, 12, 100, "left", "calibri")
+        arcade.draw_text(f"_range: {_range}", self.mouse_x+10, self.mouse_y-75, arcade.color.AZURE, 12, 100, "left", "calibri")
 
         arcade.draw_rectangle_outline(self.mouse_chunk_x*CHUNK_FULLSIZE, self.mouse_chunk_y*CHUNK_FULLSIZE, CHUNK_FULLSIZE*(_range*2), CHUNK_FULLSIZE*(_range*2), arcade.color.AZURE, 1, 0)
 
@@ -173,9 +171,9 @@ class Game(arcade.Window):
     
         for chunkx in range(world_chunk_size_x):
             for chunky in range(world_chunk_size_x):
-                if (chunkx,chunky) not in self.world.chunk_list:
+                if (chunkx,chunky) not in self.world.chunk_generated_coordinate_list:
                     stuff_to_gen.append((chunkx, chunky))
-                    self.world.chunk_list.add((chunkx,chunky))
+                    self.world.chunk_generated_coordinate_list.add((chunkx,chunky))
 
         self.world.request_chunks(stuff_to_gen)
         if stuff_to_gen:
