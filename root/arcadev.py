@@ -7,17 +7,17 @@ import queue
 import time
 
 # display settings
-WIDTH, HEIGHT = 896, 896
+WIDTH, HEIGHT = 1280, 720
 SCREEN_SIZE = (WIDTH, HEIGHT)
 
 
 # world/chunk/tile settings
-world_chunk_size_x = 64
-world_chunk_size_y = 64
+world_chunk_size_x = 128
+world_chunk_size_y = 128
 CHUNK_SIZE = 8
 TILE_SIZE = 1
 CHUNK_FULLSIZE = CHUNK_SIZE*TILE_SIZE
-_range = 8
+_range = 4
 
 
 def perlin_worker(input_queue, output_queue, noise1, noise2, noise3, noise4):
@@ -35,7 +35,7 @@ def perlin_worker(input_queue, output_queue, noise1, noise2, noise3, noise4):
                 noise_val += 0.125 * noise4([scaled_x, scaled_y])
                 noise_val *= 200
 
-                data[localx][localy] = min(255, max(0, noise_val))
+                data[localx][localy] = min(255, max(1, noise_val))
 
         output_queue.put((chunkx, chunky, data))
 
@@ -83,9 +83,9 @@ class World:
         # perlin generator settings
         self.seed = random.randint(0, 1000000)
         print("seed"+str(self.seed))
-        self.noise1 = PerlinNoise(octaves=4, seed=self.seed)
-        self.noise2 = PerlinNoise(octaves=12, seed=self.seed)
-        self.noise3 = PerlinNoise(octaves=48, seed=self.seed)
+        self.noise1 = PerlinNoise(octaves=1, seed=self.seed)
+        self.noise2 = PerlinNoise(octaves=8, seed=self.seed)
+        self.noise3 = PerlinNoise(octaves=32, seed=self.seed)
         self.noise4 = PerlinNoise(octaves=128, seed=self.seed)
 
         # Start the processes
@@ -141,22 +141,25 @@ class Game(arcade.Window):
                     self.world.chunk_list.add((chunkx,chunky))
 
         self.world.request_chunks(stuff_to_gen)
-        print(f"Requesting chunks: {stuff_to_gen}")
+        if stuff_to_gen:
+            print(f"Requesting chunks: {stuff_to_gen}")
 
     def on_draw(self):
         self.clear()
 
         self.grid_sprite_list.draw()
 
-        # for chunk in self.world.chunks:
-        #    arcade.draw_rectangle_outline((chunk.x*TILE_SIZE*CHUNK_SIZE)+((TILE_SIZE*CHUNK_SIZE)/2),(chunk.y*TILE_SIZE*CHUNK_SIZE)+((TILE_SIZE*CHUNK_SIZE)/2),CHUNK_SIZE*TILE_SIZE,CHUNK_SIZE*TILE_SIZE,(10,10,10),1,0)
+        #for chunk in self.world.chunks:
+        #   arcade.draw_rectangle_outline((chunk.x*TILE_SIZE*CHUNK_SIZE)+((TILE_SIZE*CHUNK_SIZE)/2),(chunk.y*TILE_SIZE*CHUNK_SIZE)+((TILE_SIZE*CHUNK_SIZE)/2),CHUNK_SIZE*TILE_SIZE,CHUNK_SIZE*TILE_SIZE,(10,10,10),1,0)
 
-        arcade.draw_circle_filled(self.mouse_x, self.mouse_y, 5, arcade.color.WHITE)
-        arcade.draw_text(str(self.mouse_x), self.mouse_x+10, self.mouse_y, arcade.color.GREEN, 12, 100, "left", "calibri")
-        arcade.draw_text(str(self.mouse_y), self.mouse_x+10, self.mouse_y-15, arcade.color.GREEN, 12, 100, "left", "calibri")
-        arcade.draw_text("fps:"+str(int(arcade.get_fps(10))), self.mouse_x+10, self.mouse_y-30, arcade.color.GREEN, 12, 100, "left", "calibri")
-        arcade.draw_text("chunkx:"+str(self.mouse_x // CHUNK_FULLSIZE), self.mouse_x+10, self.mouse_y-45, arcade.color.GREEN, 12, 100, "left", "calibri")
-        arcade.draw_text("chunky:"+str(self.mouse_y // CHUNK_FULLSIZE), self.mouse_x+10, self.mouse_y-60, arcade.color.GREEN, 12, 100, "left", "calibri")
+        arcade.draw_circle_filled(self.mouse_x, self.mouse_y, 5, arcade.color.GREEN_YELLOW)
+        arcade.draw_text(f"mouse_x: {self.mouse_x}", self.mouse_x+10, self.mouse_y, arcade.color.GREEN, 12, 100, "left", "calibri")
+        arcade.draw_text(f"mouse_y: {self.mouse_y}", self.mouse_x+10, self.mouse_y-15, arcade.color.GREEN, 12, 100, "left", "calibri")
+        arcade.draw_text(f"fps: {int(arcade.get_fps(10))}", self.mouse_x+10, self.mouse_y-30, arcade.color.GREEN, 12, 100, "left", "calibri")
+        arcade.draw_text(f"chunk_x: {self.mouse_chunk_x}", self.mouse_x+10, self.mouse_y-45, arcade.color.GREEN, 12, 100, "left", "calibri")
+        arcade.draw_text(f"chunk_y: {self.mouse_chunk_y}", self.mouse_x+10, self.mouse_y-60, arcade.color.GREEN, 12, 100, "left", "calibri")
+
+        arcade.draw_rectangle_outline(self.mouse_chunk_x*CHUNK_FULLSIZE, self.mouse_chunk_y*CHUNK_FULLSIZE, CHUNK_FULLSIZE*(_range*2), CHUNK_FULLSIZE*(_range*2), arcade.color.AZURE, 1, 0)
 
     def on_mouse_motion(self, x, y, dx, dy):
         self.mouse_x = x
@@ -166,7 +169,17 @@ class Game(arcade.Window):
         self.mouse_chunk_y = y // CHUNK_FULLSIZE
 
     def on_mouse_press(self, x, y, button, modifiers):
-        pass
+        stuff_to_gen = []
+    
+        for chunkx in range(world_chunk_size_x):
+            for chunky in range(world_chunk_size_x):
+                if (chunkx,chunky) not in self.world.chunk_list:
+                    stuff_to_gen.append((chunkx, chunky))
+                    self.world.chunk_list.add((chunkx,chunky))
+
+        self.world.request_chunks(stuff_to_gen)
+        if stuff_to_gen:
+            print(f"Requesting chunks: {stuff_to_gen}")
 
     def cleanup(self):
         self.world.cleanup()
