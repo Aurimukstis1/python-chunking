@@ -7,11 +7,7 @@ Now rewritten in Arcade, a subset of Pyglet, the complexity of the architecture 
 Requirements:
 - Python <=3.10.11 64-bit
 
-Python module requirements:
-- random
-- perlin_noise
-- arcade
-- multiprocessing
-- numpy
-- queue
-- time
+### Name explanations:
+- Arcadev:
+    Arcade (visualization framework, game framework like pygame) 
+    dev (short name for development version of code)

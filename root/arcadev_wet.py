@@ -5,41 +5,26 @@ import multiprocessing as mp
 import numpy as np
 import queue
 import time
+import os
+import json
+
+from addons import default_terraingen as TERRAINGEN
 
 # display settings
 WIDTH, HEIGHT = 1280, 720
 SCREEN_SIZE = (WIDTH, HEIGHT)
 
 
-# world/chunk/tile settings
-world_chunk_size_x = 128
-world_chunk_size_y = 128
-CHUNK_SIZE = 8
-TILE_SIZE = 4
-CHUNK_FULLSIZE = CHUNK_SIZE*TILE_SIZE
-_range = 4
+with open('config/default.json', 'r') as file:
+    # Read the JSON data
+    defaultconfig_data = json.load(file)
 
-
-def perlin_worker(input_queue, output_queue, noise1, noise2, noise3, noise4):
-    for chunkx, chunky in iter(input_queue.get, 'STOP'):
-        data = np.zeros((CHUNK_SIZE, CHUNK_SIZE), dtype=np.int8)
-        water_data = np.zeros((CHUNK_SIZE, CHUNK_SIZE), dtype=np.int8)
-        for localx in range(CHUNK_SIZE):
-            scaled_x = (localx/CHUNK_SIZE + chunkx)/world_chunk_size_x
-
-            for localy in range(CHUNK_SIZE):
-                scaled_y = (localy/CHUNK_SIZE + chunky)/world_chunk_size_y
-
-                noise_val = noise1([scaled_x, scaled_y])
-                noise_val += 0.5 * noise2([scaled_x, scaled_y])
-                noise_val += 0.25 * noise3([scaled_x, scaled_y])
-                noise_val += 0.125 * noise4([scaled_x, scaled_y])
-                noise_val *= 200
-
-                data[localx][localy] = min(255, max(1, noise_val))
-                water_data[localx][localy] = 0
-
-        output_queue.put((chunkx, chunky, data, water_data))
+world_chunk_size_x = defaultconfig_data["world_chunk_size_x"]
+world_chunk_size_y = defaultconfig_data["world_chunk_size_y"]
+CHUNK_SIZE = defaultconfig_data["CHUNK_SIZE"]
+TILE_SIZE = defaultconfig_data["TILE_SIZE"]
+CHUNK_FULLSIZE = defaultconfig_data["CHUNK_FULLSIZE"]
+_range = defaultconfig_data["_range"]
 
 
 class Tile(arcade.SpriteSolidColor):
@@ -64,23 +49,6 @@ class Chunk():
                 tile = Tile(screenx, screeny, input_data[localx][localy], input_water_data[localx][localy])
                 self.tiles.append(tile)
                 spritelist.append(tile)
-
-    def update_water(self):
-        for x in range(self.tiles):
-            for y in range(self.tiles):
-                center_height = self.tiles.data
-                center_water = self.tiles.water_data
-                adjacent_cells = []
-                for i in range(-1, 2):
-                    for j in range(-1, 2):
-                        if i == 0 and j == 0:  # Skip the center cell
-                            continue
-                        if x + i < 0 or x + i >= self.size[0]: # Skip cells outside the board
-                            continue
-                        if y + j < 0 or y + j >= self.size[1]: # Skip cells outside the baord
-                            continue
-                        if self.tiles[x + i][y + j] < center_height:
-                            adjacent_cells.append((x + i, y + j, self.tiles[x + i][y + j]))
     
     def __str__(self):
         return(f"[chunkx={self.chunkx}|chunky={self.chunky}]")
@@ -104,12 +72,12 @@ class World:
         print("seed"+str(self.seed))
         self.noise1 = PerlinNoise(octaves=2, seed=self.seed)
         self.noise2 = PerlinNoise(octaves=8, seed=self.seed)
-        self.noise3 = PerlinNoise(octaves=32, seed=self.seed)
+        self.noise3 = PerlinNoise(octaves=64, seed=self.seed)
         self.noise4 = PerlinNoise(octaves=128, seed=self.seed)
 
         # Start the processes
         for i in range(self.NUMBER_OF_PROCESSES):
-            mp.Process(target=perlin_worker, args=(self.task_queue, self.done_queue, self.noise1, self.noise2, self.noise3, self.noise4)).start()
+            mp.Process(target=TERRAINGEN.perlin_worker, args=(self.task_queue, self.done_queue, self.noise1, self.noise2, self.noise3, self.noise4)).start()
 
     def request_chunks(self, chunk_coord_list):
         for coords in chunk_coord_list:
@@ -121,7 +89,8 @@ class World:
             for i in range(8):  # This determines the max number of chunks to try and load per frame
                 chunkx, chunky, data, water_data = self.done_queue.get(block=False)
                 print(f"Got back chunk: ({chunkx},{chunky})")
-                self.chunks.append(Chunk(chunkx, chunky, data, water_data, self.grid_sprite_list))
+                extracted_chunk = Chunk(chunkx, chunky, data, water_data, self.grid_sprite_list)
+                self.chunks.append(extracted_chunk)
         except queue.Empty:
             return
 
@@ -187,17 +156,7 @@ class Game(arcade.Window):
         self.mouse_chunk_y = y // CHUNK_FULLSIZE
 
     def on_mouse_press(self, x, y, button, modifiers):
-        stuff_to_gen = []
-    
-        for chunkx in range(world_chunk_size_x):
-            for chunky in range(world_chunk_size_x):
-                if (chunkx,chunky) not in self.world.chunk_generated_coordinate_list:
-                    stuff_to_gen.append((chunkx, chunky))
-                    self.world.chunk_generated_coordinate_list.add((chunkx,chunky))
-
-        self.world.request_chunks(stuff_to_gen)
-        if stuff_to_gen:
-            print(f"Requesting chunks: {stuff_to_gen}")
+        saving_json = open("chunkdata\world.json", "a")
 
     def cleanup(self):
         self.world.cleanup()

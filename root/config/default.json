@@ -1,0 +1,8 @@
+{
+    "world_chunk_size_x": 128,
+    "world_chunk_size_y": 128,
+    "CHUNK_SIZE": 8,
+    "TILE_SIZE": 4,
+    "CHUNK_FULLSIZE": 32,
+    "_range": 4
+  }
