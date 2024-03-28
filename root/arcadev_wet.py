@@ -7,6 +7,7 @@ import queue
 import time
 import os
 import json
+from numba import jit
 
 from addons import default_terraingen as TERRAINGEN
 

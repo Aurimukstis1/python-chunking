@@ -8,6 +8,7 @@ import numpy as np
 import json
 import random
 from perlin_noise import PerlinNoise
+from numba import jit
 
 try:
     with open(f"config/{configfile_name}", 'r') as file:
