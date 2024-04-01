@@ -1,13 +1,8 @@
 {
-    "noise1": 2,
-    "noise2": 8,
-    "noise3": 32,
-    "noise4": 128,
-
     "noise1_weight": 1,
-    "noise2_weight": 0.5,
-    "noise3_weight": 0.25,
-    "noise4_weight": 0.125,
+    "noise2_weight": 0.7,
+    "noise3_weight": 0.5,
+    "noise4_weight": 0.2,
 
     "final_weight": 200
 }

@@ -8,8 +8,8 @@ import time
 import os
 import json
 from numba import jit
-
 from addons import default_terraingen as TERRAINGEN
+import pickle
 
 # display settings
 WIDTH, HEIGHT = 1280, 720
@@ -17,42 +17,56 @@ SCREEN_SIZE = (WIDTH, HEIGHT)
 
 
 with open('config/default.json', 'r') as file:
-    # Read the JSON data
     defaultconfig_data = json.load(file)
 
 world_chunk_size_x = defaultconfig_data["world_chunk_size_x"]
 world_chunk_size_y = defaultconfig_data["world_chunk_size_y"]
+_range = defaultconfig_data["_range"]
 CHUNK_SIZE = defaultconfig_data["CHUNK_SIZE"]
 TILE_SIZE = defaultconfig_data["TILE_SIZE"]
-CHUNK_FULLSIZE = defaultconfig_data["CHUNK_FULLSIZE"]
-_range = defaultconfig_data["_range"]
+CHUNK_FULLSIZE = TILE_SIZE*CHUNK_SIZE
 
 
 class Tile(arcade.SpriteSolidColor):
     def __init__(self, input_screenx, input_screeny, input_data, input_water_data):
-        super().__init__(TILE_SIZE, TILE_SIZE, (int(input_data), int(input_data), int(input_data)))
-        self.data = int(input_data)
-        self.water_data = input_water_data
-        self.center_x = input_screenx+(int(TILE_SIZE/2))
-        self.center_y = input_screeny+(int(TILE_SIZE/2))
+        # Convert color values to integers
+        color_value = int(input_data)
+        super().__init__(TILE_SIZE, TILE_SIZE, (color_value, color_value, color_value))
+        self.data:       int = input_data
+        self.water_data: int = input_water_data
+        self.center_x:   int = input_screenx+(int(TILE_SIZE/2))
+        self.center_y:   int = input_screeny+(int(TILE_SIZE/2))
+    
+    def to_dict(self):
+        return {
+            'data': self.data,
+            'water_data': self.water_data,
+            'center_x': self.center_x,
+            'center_y': self.center_y
+        }
 
 
 class Chunk():
-    def __init__(self, input_chunkx, input_chunky, input_data, input_water_data, spritelist):
-        self.chunkx = input_chunkx
-        self.chunky = input_chunky
-        self.tiles = []
+    def __init__(self, input_chunkx, input_chunky):
+        self.chunkx: int = input_chunkx
+        self.chunky: int = input_chunky
+        self.tiles: list = []
 
+    def create(self, input_data, input_water_data, spritelist):
         for localx in range(CHUNK_SIZE):
-            screenx = (localx+CHUNK_SIZE*input_chunkx)*TILE_SIZE
+            screenx = (localx+CHUNK_SIZE*self.chunkx)*TILE_SIZE
             for localy in range(CHUNK_SIZE):
-                screeny = (localy+CHUNK_SIZE*input_chunky)*TILE_SIZE
+                screeny = (localy+CHUNK_SIZE*self.chunky)*TILE_SIZE
                 tile = Tile(screenx, screeny, input_data[localx][localy], input_water_data[localx][localy])
                 self.tiles.append(tile)
                 spritelist.append(tile)
-    
-    def __str__(self):
-        return(f"[chunkx={self.chunkx}|chunky={self.chunky}]")
+
+    def to_dict(self):
+        return {
+            'chunkx': self.chunkx,
+            'chunky': self.chunky,
+            'tiles': [tile.to_dict() for tile in self.tiles]
+        }
 
 
 class World:
@@ -70,15 +84,21 @@ class World:
 
         # perlin generator settings
         self.seed = random.randint(0, 1000000)
-        print("seed"+str(self.seed))
-        self.noise1 = PerlinNoise(octaves=2, seed=self.seed)
-        self.noise2 = PerlinNoise(octaves=8, seed=self.seed)
-        self.noise3 = PerlinNoise(octaves=64, seed=self.seed)
-        self.noise4 = PerlinNoise(octaves=128, seed=self.seed)
+        self.noise_profile1 = PerlinNoise(octaves=2, seed=self.seed)
+        self.noise_profile2 = PerlinNoise(octaves=8, seed=self.seed)
+        self.noise_profile3 = PerlinNoise(octaves=64, seed=self.seed)
+        self.noise_profile4 = PerlinNoise(octaves=128, seed=self.seed)
 
         # Start the processes
         for i in range(self.NUMBER_OF_PROCESSES):
-            mp.Process(target=TERRAINGEN.perlin_worker, args=(self.task_queue, self.done_queue, self.noise1, self.noise2, self.noise3, self.noise4)).start()
+            mp.Process(target=TERRAINGEN.perlin_worker, args=(
+                self.task_queue,
+                self.done_queue,
+                self.noise_profile1,
+                self.noise_profile2,
+                self.noise_profile3,
+                self.noise_profile4
+            )).start()
 
     def request_chunks(self, chunk_coord_list):
         for coords in chunk_coord_list:
@@ -87,11 +107,14 @@ class World:
 
     def get_chunks(self):
         try:
-            for i in range(8):  # This determines the max number of chunks to try and load per frame
+            for i in range(self.NUMBER_OF_PROCESSES):  # This determines the max number of chunks to try and load per frame
                 chunkx, chunky, data, water_data = self.done_queue.get(block=False)
-                print(f"Got back chunk: ({chunkx},{chunky})")
-                extracted_chunk = Chunk(chunkx, chunky, data, water_data, self.grid_sprite_list)
+                extracted_chunk = Chunk(chunkx, chunky)
+                data = data.tolist()
+                water_data = water_data.tolist()
+                extracted_chunk.create(data, water_data, self.grid_sprite_list)
                 self.chunks.append(extracted_chunk)
+                print(f"Got back chunk: ({chunkx},{chunky})")
         except queue.Empty:
             return
 
@@ -100,6 +123,30 @@ class World:
         # Otherwise, they will be left orphaned (and that wouldn't be very nice.)
         for i in range(self.NUMBER_OF_PROCESSES):
             self.task_queue.put('STOP')
+
+    def save_world(self):
+        for i in range(self.NUMBER_OF_PROCESSES):
+            self.task_queue.put('STOP')
+
+        with open('chunkdata/world.data','wb') as f:
+            world_data_dictionary = {
+                "seed": self.seed,
+                "noise_profile1": self.noise_profile1.__dict__,
+                "noise_profile2": self.noise_profile2.__dict__,
+                "noise_profile3": self.noise_profile3.__dict__,
+                "noise_profile4": self.noise_profile4.__dict__,
+                "width": self.width,
+                "height": self.height,
+                "chunk_generated_coordinate_list": list(self.chunk_generated_coordinate_list),
+                "chunks": []
+            }
+
+            for chunk in self.chunks:
+                world_data_dictionary["chunks"].append(chunk.to_dict())
+
+            pickle.dump(world_data_dictionary, f)
+
+            print("Saved world successfuly.")
 
 
 class Game(arcade.Window):
@@ -124,7 +171,7 @@ class Game(arcade.Window):
         for chunkx in range(self.mouse_chunk_x-_range, self.mouse_chunk_x+_range):
             for chunky in range(self.mouse_chunk_y-_range, self.mouse_chunk_y+_range):
                 if (chunkx,chunky) not in self.world.chunk_generated_coordinate_list:
-                    stuff_to_gen.add((chunkx, chunky))
+                    stuff_to_gen.add((chunkx,chunky))
                     self.world.chunk_generated_coordinate_list.add((chunkx,chunky))
 
         self.world.request_chunks(stuff_to_gen)
@@ -160,7 +207,7 @@ class Game(arcade.Window):
         saving_json = open("chunkdata\world.json", "a")
 
     def cleanup(self):
-        self.world.cleanup()
+        self.world.save_world()
 
 
 def main():

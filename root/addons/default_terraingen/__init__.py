@@ -32,7 +32,6 @@ try:
 
 except FileNotFoundError:
     print(f"[{time.ctime()}]#Error: Config file {configfile_name} not found...")
-    
 
 def perlin_worker(input_queue, output_queue, noise1, noise2, noise3, noise4):
     for chunkx, chunky in iter(input_queue.get, 'STOP'):
