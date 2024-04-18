@@ -52,7 +52,7 @@ class Chunk():
         self.chunky: int = input_chunky
         self.tiles: list = []
 
-    def create(self, input_data, input_water_data, spritelist):
+    def fill(self, input_data, input_water_data, spritelist):
         for localx in range(CHUNK_SIZE):
             screenx = (localx+CHUNK_SIZE*self.chunkx)*TILE_SIZE
             for localy in range(CHUNK_SIZE):
@@ -112,7 +112,7 @@ class World:
                 extracted_chunk = Chunk(chunkx, chunky)
                 data = data.tolist()
                 water_data = water_data.tolist()
-                extracted_chunk.create(data, water_data, self.grid_sprite_list)
+                extracted_chunk.fill(data, water_data, self.grid_sprite_list)
                 self.chunks.append(extracted_chunk)
                 print(f"Got back chunk: ({chunkx},{chunky})")
         except queue.Empty:
